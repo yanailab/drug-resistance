@@ -1,9 +1,8 @@
 library(Seurat)
 library(ggplot2)
 
-setwd("/path/ovsaho_10X")
+setwd("/path/ovsaho_resistance/ovsaho_10X")
 load("ovsaho_g1_raw.rda")
-
 
 ovsaho_g1 = CreateSeuratObject(ovsaho_g1_raw_data, names.delim = "_", names.field = 2)
 ovsaho_g1[["percent.mt"]] <- PercentageFeatureSet(ovsaho_g1, pattern = "^MT-")
@@ -68,6 +67,7 @@ ovsaho_g1_umap_cluster_plot = ggplot(ovsaho_umap_cluster$data, aes(y = UMAP_2, x
 
 new_meta = ovsaho_g1@meta.data
 new_meta$orig.ident <- stringr::str_replace_all(new_meta$orig.ident, c("T0" = "C"))
+
 # adding the fixed cluster names from previous plot
 new_meta$new_clusters <- ovsaho_g1_umap_cluster_plot$data$ident
 
@@ -148,9 +148,52 @@ save_plot("ovsaho_g1_umap_all.pdf", ovsaho_g1_umap_all, base_height = 3, base_wi
 
 
 
-###########################
-# Bubble plot for markers #
-###########################
+####
+# Plotting gene markers
+###
+
+library(RColorBrewer)
+library(ComplexHeatmap)
+library(circlize)
+library(cowplot)
+
+# calculate average expression by State
+new_metadata = ovsaho_g1@meta.data
+
+new_metadata$new_id <- stringr::str_replace_all(new_metadata$seurat_clusters, 
+                                                      c("1" = "A", "3" = "B", "0" = "C",
+                                                        "4" = "D", "2" = "E"))
+new_metadata$new_id <- stringr::str_replace_all(new_metadata$new_id, 
+                                                      c("A" = "0", "B" = "1", "C" = "2",
+                                                        "D" = "3", "E" = "4"))
+# Saving table of gene markers
+ovsaho_g1_markers_new_id = ovsaho_g1_markers
+ovsaho_g1_markers_new_id$cluster <- stringr::str_replace_all(ovsaho_g1_markers_new_id$cluster, 
+                                                c("1" = "A", "3" = "B", "0" = "C",
+                                                  "4" = "D", "2" = "E"))
+ovsaho_g1_markers_new_id$cluster <- stringr::str_replace_all(ovsaho_g1_markers_new_id$cluster, 
+                                                c("A" = "0", "B" = "1", "C" = "2",
+                                                  "D" = "3", "E" = "4"))
+
+# save markers
+write.table(ovsaho_g1_markers_new_id, file = "ovsaho_markers.tsv", row.names = F,
+            col.names = T, quote = F, sep = "\t")
+
+# write table for GEO submission metadata
+write.table(ovsaho_g1_new_metadata, file = "ovsaho_metadata_g1.tsv", row.names = T,
+            col.names = T, quote = F, sep = "\t")
+
+
+labels = as.character(unique(new_metadata$new_id))
+list_means = list()
+for(label in labels) {
+  cells = rownames(new_metadata[new_metadata$new_id == label, ])
+  avg_cells = rowMeans(as.matrix(ovsaho_g1@assays$RNA@data[, cells]))
+  list_means[[label]] <- avg_cells
+}
+
+ovsaho_g1_avg_data = do.call(cbind, list_means)
+ovsaho_g1_avg_data = ovsaho_g1_avg_data[, c(1,4,3,2,5)]
 
 genes_to_show = c("SOX17", "PAX8", "WT1", "KRT8", "IFI27", "ISG15", "VIM", "CD24", "CD44",
                   "HIF1A", "DDIT4", "DUSP1", "PGK1", "LDHA", "IMPDH2",
@@ -179,4 +222,44 @@ ggplot(avg_expression,
         legend.key.size = unit(0.3, 'cm'), legend.position="bottom")
 
 save_plot("ovsaho_markers_bubble.pdf", ovsaho_markers_bubble, base_height = 3, base_width = 8.5)
+
+
+###
+# Bulk correlation
+###
+
+new_metadata = ovsaho_g1@meta.data
+labels = as.character(unique(new_metadata$orig.ident))
+list_means = list()
+for(label in labels) {
+  cells = rownames(new_metadata[new_metadata$orig.ident == label, ])
+  avg_cells = rowMeans(as.matrix(ovsaho_g1@assays$RNA@data[, cells]))
+  list_means[[label]] <- avg_cells
+}
+ovsaho_g1_avg_bulk = do.call(cbind, list_means)
+ovsaho_g1_avg_bulk = ovsaho_g1_avg_bulk[, c(2,3,4,1,5)]
+
+# try with variable genes
+var_genes <- VariableFeatures(ovsaho_g1)
+
+cormM = cor((ovsaho_g1_avg_bulk[var_genes, ]), method="spearman")
+
+
+library(dendextend)
+dend = as.dendrogram(hclust(dist(cormM)), type = "average") # can be used as cluster_rows and columns arg instead of T
+dend <- click_rotate(dend, continue = TRUE)
+
+h2 = Heatmap(cormM, show_column_names = T, show_row_dend = T, 
+             show_column_dend = F, show_row_names = T, 
+             name = "Corr", row_names_gp = gpar(fontsize = 7),
+             column_names_gp = gpar(fontsize = 7),
+             col = colorRampPalette(rev(brewer.pal(n = 10, name = "RdBu")))(50),
+             cluster_rows = dend, row_dend_reorder = F, cluster_columns = dend,
+             column_dend_reorder = F,
+             heatmap_width = unit(7, "cm"), heatmap_height = unit(6, "cm"),
+             heatmap_legend_param = list(title_gp = gpar(fontsize = 7),
+                                         title = "Correlation",
+                                         labels_gp = gpar(fontsize = 7),
+                                         legend_height = unit(2, "cm")))
+draw(h2)
 

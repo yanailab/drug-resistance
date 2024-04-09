@@ -271,8 +271,6 @@ cov362_g1_avg_bulk = cov362_g1_avg_bulk[, c(2,3,4,1,5)]
 
 # try with variable genes
 var_genes <- VariableFeatures(cov362_g1)
-seurat_df <- GetAssayData(cluster3.seurat.obj)[var_genes,]
-
 cormM = cor((cov362_g1_avg_bulk[var_genes, ]), method="spearman")
 
 

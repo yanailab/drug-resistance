@@ -210,7 +210,7 @@ cluster_list = create_cell_clusters(clusters, min = 30, max = 0.80)
 
 # 4. Find all markers for clusters
 cat("Step4: Finding all markers for clusters: parallel\n")
-signatures = find_markers_parallel(kura_all, cluster_list[1:4], ncores = 4)
+signatures = find_markers_parallel(kura_all, cluster_list, ncores = 4)
 
 
 # 5. create signatures
